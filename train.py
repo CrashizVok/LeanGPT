@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 
 @dataclass
 class TrainingConfig:
-    output_dir: str="./Model"             # Kimenet mappa
+    output_dir: str="./Model"               # Kimenet mappa
     overwrite_output_dir: bool = True       # Felülírás engedélyezése
     num_train_epochs: int = 3               # Epoch-ok száma
     per_device_train_batch_size: int = 4    # Batch méret (GPU függő)
@@ -129,8 +129,13 @@ class Train():
         )
 
         trainer.train()
+        self.save_model()
 
 
+    def save_model(self):
+        self.model.save_pretrained("./Model")
+        self.tokenizer.save_pretrained("./Model")
+        print("Model was saved. (./Model)")
 
 
 if __name__ == "__main__":
