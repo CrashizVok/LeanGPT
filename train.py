@@ -10,8 +10,8 @@ class TrainingConfig:
     output_dir: str="./Model"               # Kimenet mappa
     overwrite_output_dir: bool = True       # Felülírás engedélyezése
     num_train_epochs: int = 3               # Epoch-ok száma
-    per_device_train_batch_size: int = 4    # Batch méret (GPU függő)
-    per_device_eval_batch_size: int = 8     # Eval batch méret
+    per_device_train_batch_size: int = 1    # Batch méret (GPU függő)
+    per_device_eval_batch_size: int = 2     # Eval batch méret
     warmup_steps: int = 500                 # Warmup lépések
     logging_steps: int = 100                # Log gyakoriság
     save_steps: int = 1000                  # Mentés gyakorisága
@@ -20,7 +20,7 @@ class TrainingConfig:
     learning_rate: float = 5e-5             # Tanulási ráta
     weight_decay: float = 0.01              # L2 regularizáció
     fp16: bool = True                       # Mixed precision (GPU)
-    dataloader_num_workers: int = 4         # Adatbetöltő szálak
+    dataloader_num_workers: int = 2         # Adatbetöltő szálak
 
 
     def to_training_args(self) -> TrainingArguments:
@@ -128,7 +128,8 @@ class Train():
             train_dataset = dataset,
             tokenizer = self.tokenizer
         )
-
+        
+        torch.cuda.empty_cache()
         trainer.train()
         self.save_model()
 
