@@ -104,5 +104,5 @@ if __name__ == "__main__":
     data_file = "data.json"
 
     train = Train(model_name, tokenizer_name, tokenizer, model, data_file)
-    print(len(train.data_processing()))
+    print(train.data_processing())
         
