@@ -142,8 +142,8 @@ class Train():
 
 if __name__ == "__main__":
     ## Model settings ##
-    model_name = "EleutherAI/gpt-neo-1.3B"
-    tokenizer_name = "EleutherAI/gpt-neo-1.3B"
+    model_name = "EleutherAI/gpt-neo-125M"
+    tokenizer_name = "EleutherAI/gpt-neo-125M"
     tokenizer = GPT2Tokenizer.from_pretrained(tokenizer_name)
     model = GPTNeoForCausalLM.from_pretrained(model_name)
     data_file = "data.json"
