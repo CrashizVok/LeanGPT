@@ -18,7 +18,6 @@ def generate_next_word(model, tokenizer, prompt, max_length=50):
     generated_ids = torch.cat([input_ids[0], next_token_id])
     generated_text = tokenizer.decode(generated_ids)
 
-    # Külön a következő szó, a prompt után
     next_word = tokenizer.decode(next_token_id)
 
     return generated_text, next_word
