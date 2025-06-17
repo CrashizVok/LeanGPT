@@ -28,9 +28,7 @@ if __name__ == "__main__":
     model_path = "./Model"
     tokenizer = GPT2Tokenizer.from_pretrained(model_path)
     model = GPTNeoForCausalLM.from_pretrained(model_path)
-
-    prompt = input("Adj meg egy kezdő mondatot: ")
-    full_text, next_word = generate_next_word(model, tokenizer, prompt)
-
-    print(f"Teljes szöveg: {full_text}")
-    print(f"Következő szó: {next_word}")
+    while True:
+        prompt = input(">>>> ")
+        full_text, next_word = generate_next_word(model, tokenizer, prompt)
+        print(f"SecretGPT: {full_text}")
