@@ -3,24 +3,27 @@ import torch
 from dataclasses import dataclass
 from transformers import GPTNeoForCausalLM, GPT2Tokenizer, TrainingArguments, Trainer
 from torch.utils.data import DataLoader
+from datasets import Dataset 
+
 
 
 @dataclass
 class TrainingConfig:
     output_dir: str="./Model"               # Kimenet mappa
     overwrite_output_dir: bool = True       # Felülírás engedélyezése
-    num_train_epochs: int = 3               # Epoch-ok száma
-    per_device_train_batch_size: int = 1    # Batch méret (GPU függő)
+    num_train_epochs: int = 5               # Epoch-ok száma
+    per_device_train_batch_size: int = 2    # Batch méret (GPU függő)
     per_device_eval_batch_size: int = 2     # Eval batch méret
     warmup_steps: int = 500                 # Warmup lépések
     logging_steps: int = 100                # Log gyakoriság
-    save_steps: int = 1000                  # Mentés gyakorisága
-    #evaluation_strategy: str = "steps"     # Kiértékelési stratégia
+    save_steps: int = 500                   # Mentés gyakorisága
+    eval_strategy: str = "steps"            # Kiértékelési stratégia
     eval_steps: int = 500                   # Kiértékelés gyakorisága
-    learning_rate: float = 5e-5             # Tanulási ráta
+    learning_rate: float = 2e-5             # Tanulási ráta
     weight_decay: float = 0.01              # L2 regularizáció
     fp16: bool = True                       # Mixed precision (GPU)
     dataloader_num_workers: int = 2         # Adatbetöltő szálak
+    load_best_model_at_end: bool = True
 
 
     def to_training_args(self) -> TrainingArguments:
@@ -33,12 +36,13 @@ class TrainingConfig:
             warmup_steps = self.warmup_steps,
             logging_steps = self.logging_steps,
             save_steps = self.save_steps,
-            #evaluation_strategy = self.evaluation_strategy,
+            eval_strategy  = self.eval_strategy,
             eval_steps = self.eval_steps,
             learning_rate = self.learning_rate,
             weight_decay = self.weight_decay,
             fp16 = self.fp16,
-            dataloader_num_workers = self.dataloader_num_workers
+            dataloader_num_workers = self.dataloader_num_workers,
+            load_best_model_at_end = self.load_best_model_at_end
         )
 
 
@@ -90,15 +94,20 @@ class Train():
         self.tokenizer.add_special_tokens({"pad_token": "[PAD]"})
         self.model.resize_token_embeddings(len(self.tokenizer))
 
-        corpus = self.data_processing()
+        with open(self.data_file, "r", encoding="utf-8") as file:
+            data = json.load(file)
+    
+        texts = [item["text"] for item in data]
+
         tokens = self.tokenizer(
-            corpus, 
-            return_tensors = "pt",  #Ez csak a formátum beállítása
-            truncation = True,      #Nem engedi hogy túl hosszú legyen, max 2048 token
-            padding = True          #Ez tölti ki a maradék helyet [PAD]-al
-            )
-        
+            texts,
+            return_tensors="pt",
+            truncation=True,
+            padding=True
+        )
+
         return tokens
+
 
 
     def prepare_dataset(self):
@@ -109,29 +118,33 @@ class Train():
         dataset = []
         for i in range(input_ids.size(0)):
             dataset.append({
-                "input_ids" : input_ids[i],
-                "attention_mask" : attention_mask[i],
+                "input_ids": input_ids[i],
+                "attention_mask": attention_mask[i],
                 "labels": input_ids[i]
             })
-        
-        return dataset
+
+        hf_dataset = Dataset.from_list(dataset)
+        split = hf_dataset.train_test_split(test_size=0.1)
+        return split["train"], split["test"]
 
 
     def train_model(self):
-        dataset = self.prepare_dataset()
+        train_dataset, eval_dataset = self.prepare_dataset()
         training_config = TrainingConfig()
         training_args = training_config.to_training_args()
 
         trainer = Trainer(
-            model = self.model,
-            args = training_args,
-            train_dataset = dataset,
-            tokenizer = self.tokenizer
+            model=self.model,
+            args=training_args,
+            train_dataset=train_dataset,
+            eval_dataset=eval_dataset,
+            tokenizer=self.tokenizer
         )
-        
+
         torch.cuda.empty_cache()
         trainer.train()
         self.save_model()
+
 
 
     def save_model(self):
