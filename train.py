@@ -110,7 +110,8 @@ class Train():
         for i in range(input_ids.size(0)):
             dataset.append({
                 "input_ids" : input_ids[i],
-                "attention_mask" : attention_mask[i] 
+                "attention_mask" : attention_mask[i],
+                "labels": input_ids[i]
             })
         
         return dataset
@@ -148,5 +149,5 @@ if __name__ == "__main__":
 
 
     train = Train(model_name, tokenizer_name, tokenizer, model, data_file)
-    print(train.train_model())
+    train.train_model()
         
