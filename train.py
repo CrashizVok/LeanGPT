@@ -1,68 +1,108 @@
+import json
 import torch
-from datasets import load_dataset
-from transformers import (AutoModelForCausalLM, AutoTokenizer,
-                          TrainingArguments, Trainer)
+from dataclasses import dataclass
+from transformers import GPTNeoForCausalLM, GPT2Tokenizer, TrainingArguments
 
-MODEL_NAME = "gpt2" 
-DATA_PATH = "data.json"
-OUTPUT_DIR = "./LeanGPT"  
-BATCH_SIZE = 6
-EPOCHS = 3  
-MAX_LENGTH = 384  
-LOGGING_STEPS = 50
-
-tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-
-tokenizer.pad_token = tokenizer.eos_token if tokenizer.pad_token is None else tokenizer.pad_token
-
-model = AutoModelForCausalLM.from_pretrained(MODEL_NAME)
-model.resize_token_embeddings(len(tokenizer))
-
-dataset = load_dataset("json", data_files=DATA_PATH)["train"]
-
-def preprocess_data(examples):
-    texts = [f"User: {inp}\nBot: {resp}" for inp, resp in zip(examples["input"], examples["response"])]
-
-    tokenized_inputs = tokenizer(
-        texts, padding="max_length", truncation=True, max_length=MAX_LENGTH, return_tensors="pt"
-    )
-
-    labels = tokenized_inputs["input_ids"].clone()
-    labels[labels == tokenizer.pad_token_id] = -100  
-
-    tokenized_inputs["labels"] = labels
-    return tokenized_inputs
-
-tokenized_dataset = dataset.map(preprocess_data, batched=True)
-tokenized_dataset.set_format("torch", columns=["input_ids", "attention_mask", "labels"])
-
-training_args = TrainingArguments(
-    output_dir=OUTPUT_DIR,
-    per_device_train_batch_size=BATCH_SIZE,
-    num_train_epochs=EPOCHS,
-    save_strategy="epoch", 
-    evaluation_strategy="no",  
-    logging_dir="./logs",
-    logging_steps=LOGGING_STEPS,
-    fp16=torch.cuda.is_available(), 
-    learning_rate=3e-5,  
-    warmup_steps=200,  
-    weight_decay=0.01, 
-    gradient_accumulation_steps=2,  
-    save_total_limit=5,  
-    push_to_hub=False  
-)
+@dataclass
+class TrainingConfig:
+    output_dir: str="./results"             # Kimenet mappa
+    overwrite_output_dir: bool = True       # Felülírás engedélyezése
+    num_train_epochs: int = 3               # Epoch-ok száma
+    per_device_train_batch_size: int = 4    # Batch méret (GPU függő)
+    per_device_eval_batch_size: int = 8     # Eval batch méret
+    warmup_steps: int = 500                 # Warmup lépések
+    logging_steps: int = 100                # Log gyakoriság
+    save_steps: int = 1000                  # Mentés gyakorisága
+    evaluation_strategy: str = "steps"      # Kiértékelési stratégia
+    eval_steps: int = 500                   # Kiértékelés gyakorisága
+    learning_rate: float = 5e-5             # Tanulási ráta
+    weight_decay: float = 0.01              # L2 regularizáció
+    fp16: bool = True                       # Mixed precision (GPU)
+    dataloader_num_workers: int = 4         # Adatbetöltő szálak
 
 
-trainer = Trainer(
-    model=model,
-    args=training_args,
-    train_dataset=tokenized_dataset,
-)
+    def to_training_args(self) -> TrainingArguments:
+        return TrainingArguments(
+            output_dir = self.output_dir,
+            overwrite_output_dir = self.overwrite_output_dir,
+            num_train_epochs = self.num_train_epochs,
+            per_device_train_batch_size = self.per_device_train_batch_size,
+            per_device_eval_batch_size = self.per_device_eval_batch_size,
+            warmup_steps = self.warmup_steps,
+            logging_steps = self.logging_steps,
+            save_steps = self.save_steps,
+            evaluation_strategy = self.evaluation_strategy,
+            eval_steps = self.eval_steps,
+            learning_rate = self.learning_rate,
+            weight_decay = self.weight_decay,
+            fp16 = self.fp16,
+            dataloader_num_workers = self.dataloader_num_workers
+        )
 
-trainer.train()
 
-model.save_pretrained(OUTPUT_DIR)
-tokenizer.save_pretrained(OUTPUT_DIR)
+## Train Class ##
+class Train():
+    def __init__(self, model_name, tokenizer_name, tokenizer, model, data_file):
+        self.model_name = model_name
+        self.tokenizer_name = tokenizer_name
+        self.tokenizer = tokenizer
+        self.model = model
+        self.data_file = data_file
 
-print(f"{OUTPUT_DIR}")
+        self._setup_model()
+
+    def _setup_model(self):
+        try:
+            self.tokenizer = GPT2Tokenizer.from_pretrained(self.tokenizer_name)
+            self.model = GPTNeoForCausalLM.from_pretrained(self.model_name)
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+            print(f"Model name: {self.model_name}")
+            print(f"Tokenizer name: {self.tokenizer_name}")
+            print(f"Device: {device}")
+
+            print("\nThe model has loaded successfully.")
+
+        except Exception as e:
+            print(e)
+
+    def data_processing(self) -> str:
+        corpus = None
+
+        with open(self.data_file, "r", encoding="utf-8") as file:
+            data = json.load(file)
+            
+            corpus_lines = []
+            for item in data:
+                text = item["text"]
+                corpus_lines.append(text)
+
+            corpus = "\n".join(corpus_lines)
+
+        return corpus
+    
+
+    def tokenize_corpus(self):
+        pass
+
+
+    def prepare_dataset(self):
+        pass
+
+
+    def train_model(self):
+        pass
+
+
+
+if __name__ == "__main__":
+    ## Model settings ##
+    model_name = "EleutherAI/gpt-neo-1.3B"
+    tokenizer_name = "EleutherAI/gpt-neo-1.3B"
+    tokenizer = GPT2Tokenizer.from_pretrained(tokenizer_name)
+    model = GPTNeoForCausalLM.from_pretrained(model_name)
+    data_file = "data.json"
+
+    train = Train(model_name, tokenizer_name, tokenizer, model, data_file)
+    print(len(train.data_processing()))
+        
