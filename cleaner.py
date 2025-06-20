@@ -6,22 +6,13 @@ url = "https://www.gutenberg.org/cache/epub/1526/pg1526.txt"
 response = requests.get(url)
 text = response.text
 
-start_marker = "*** START OF THE PROJECT GUTENBERG EBOOK THE MERCHANT OF VENICE ***"
-end_marker = "*** END OF THE PROJECT GUTENBERG EBOOK THE MERCHANT OF VENICE ***"
+start_marker = "*** START OF THE PROJECT GUTENBERG EBOOK TWELFTH NIGHT; OR, WHAT YOU WILL ***"
+end_marker = "*** END OF THE PROJECT GUTENBERG EBOOK TWELFTH NIGHT; OR, WHAT YOU WILL ***"
 text = text.split(start_marker)[-1].split(end_marker)[0]
 
 lines = text.splitlines()
 dialogues = []
 current = ""
-
-def clean_line(line):
-    # Szereplőnevek eltávolítása pl. ANTONIO.
-    line = re.sub(r'^[A-Z][A-Z\s\-]+\.?\s*$', '', line)
-    # Szereplőnévvel kezdődő sorokból eltávolítani a nevet pl. BASSANIO. Hello → Hello
-    line = re.sub(r'^[A-Z][A-Z\s\-]+\.\s+', '', line)
-    # Színpadi utasítások eltávolítása
-    line = re.sub(r'\[.*?\]', '', line)
-    return line.strip()
 
 for line in lines:
     line = line.strip()
@@ -31,23 +22,25 @@ for line in lines:
             dialogues.append({"text": current.strip()})
             current = ""
         continue
+
     if re.match(r'^(ACT|SCENE)\b', line):
         continue
-    if line.startswith("Enter") or line.startswith("Exit") or line.startswith("Exeunt"):
+    if line.startswith(("Enter", "Exit", "Exeunt")):
         continue
-    if re.match(r'^[A-Z .\-]+$', line):  
+    if re.search(r'\[.*?\]', line):
         continue
-    if re.match(r'^\[.*\]$', line):  
+    if re.match(r'^[A-Z .\-]+\.$', line):
         continue
 
-    cleaned = clean_line(line)
-    if cleaned:
-        current += " " + cleaned
+    # Név eltávolítása a sor elejéről (pl. "VIOLA.")
+    line = re.sub(r'^[A-Z .\-]+\.\s*', '', line)
+
+    current += " " + line
 
 if current:
     dialogues.append({"text": current.strip()})
 
-with open("merchant_of_venice_clean.json", "w", encoding="utf-8") as f:
+with open("twelfth_night.json", "w", encoding="utf-8") as f:
     json.dump(dialogues, f, ensure_ascii=False, indent=2)
 
-print(f"{len(dialogues)} szövegrészlet mentve a merchant_of_venice_clean.json fájlba.")
+print(f"{len(dialogues)} szövegrészlet mentve a twelfth_night.json fájlba.")

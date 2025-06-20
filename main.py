@@ -1,33 +1,31 @@
 import torch
 from transformers import GPTNeoForCausalLM, GPT2Tokenizer
 
-def generate_next_word(model, tokenizer, prompt, max_length=50):
+def generate_text(model, tokenizer, prompt, max_length=50):
     model.eval()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
 
     input_ids = tokenizer.encode(prompt, return_tensors="pt").to(device)
 
-    with torch.no_grad():
-        outputs = model(input_ids)
-        logits = outputs.logits
+    generated_ids = model.generate(
+        input_ids,
+        max_length=max_length,
+        do_sample=True,
+        top_k=50,
+        top_p=0.95,
+        eos_token_id=tokenizer.eos_token_id,
+        pad_token_id=tokenizer.pad_token_id
+    )
 
-    next_token_logits = logits[0, -1, :]
-    next_token_id = torch.argmax(next_token_logits).unsqueeze(0)
-
-    generated_ids = torch.cat([input_ids[0], next_token_id])
-    generated_text = tokenizer.decode(generated_ids)
-
-    next_word = tokenizer.decode(next_token_id)
-
-    return generated_text, next_word
+    return tokenizer.decode(generated_ids[0], skip_special_tokens=True)
 
 
 if __name__ == "__main__":
-    model_path = "./Model"
+    model_path = "./Model/checkpoint-10500"
     tokenizer = GPT2Tokenizer.from_pretrained(model_path)
     model = GPTNeoForCausalLM.from_pretrained(model_path)
     while True:
         prompt = input(">>>> ")
-        full_text, next_word = generate_next_word(model, tokenizer, prompt)
-        print(f"SecretGPT: {full_text}")
+        output = generate_text(model, tokenizer, prompt)
+        print(f"SecretGPT: {output}")

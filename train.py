@@ -1,11 +1,9 @@
 import json
 import torch
 from dataclasses import dataclass
-from transformers import GPTNeoForCausalLM, GPT2Tokenizer, TrainingArguments, Trainer
+from transformers import GPTNeoForCausalLM, TrainingArguments, Trainer, AutoTokenizer, DataCollatorForLanguageModeling
 from torch.utils.data import DataLoader
 from datasets import Dataset 
-
-
 
 @dataclass
 class TrainingConfig:
@@ -19,12 +17,14 @@ class TrainingConfig:
     save_steps: int = 500                   # Mentés gyakorisága
     eval_strategy: str = "steps"            # Kiértékelési stratégia
     eval_steps: int = 500                   # Kiértékelés gyakorisága
-    learning_rate: float = 2e-5             # Tanulási ráta
+    learning_rate: float = 5e-5             # Tanulási ráta
     weight_decay: float = 0.01              # L2 regularizáció
     fp16: bool = True                       # Mixed precision (GPU)
     dataloader_num_workers: int = 2         # Adatbetöltő szálak
     load_best_model_at_end: bool = True
-
+    gradient_accumulation_steps: int = 4
+    metric_for_best_model: str = "eval_loss"
+    greater_is_better: bool = False
 
     def to_training_args(self) -> TrainingArguments:
         return TrainingArguments(
@@ -42,41 +42,55 @@ class TrainingConfig:
             weight_decay = self.weight_decay,
             fp16 = self.fp16,
             dataloader_num_workers = self.dataloader_num_workers,
-            load_best_model_at_end = self.load_best_model_at_end
+            load_best_model_at_end = self.load_best_model_at_end,
+            gradient_accumulation_steps = self.gradient_accumulation_steps,
+            metric_for_best_model=self.metric_for_best_model,
+            greater_is_better=self.greater_is_better
         )
-
 
 ## Train Class ##
 class Train():
-    def __init__(self, model_name, tokenizer_name, tokenizer, model, data_file):
+    def __init__(self, model_name, tokenizer_name, data_file):
         self.model_name = model_name
         self.tokenizer_name = tokenizer_name
-        self.tokenizer = tokenizer
-        self.model = model
         self.data_file = data_file
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
+        self.training_config = TrainingConfig()
+        
+        self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
+        self.model = GPTNeoForCausalLM.from_pretrained(model_name)
+        
+        self._setup_tokenizer()
         self._setup_model()
+
+    def _setup_tokenizer(self):
+        if self.tokenizer.pad_token is None:
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+
+        special_tokens = {
+            "eos_token": "<|endoftext|>",
+            "bos_token": "<|startoftext|>",
+            "unk_token": "<unk>",
+            "sep_token": "<sep>" 
+        }
+        self.tokenizer.add_special_tokens(special_tokens)
+        
+        print(f"Tokenizer vocabulary size: {len(self.tokenizer)}")
 
     def _setup_model(self):
         try:
-            self.tokenizer = GPT2Tokenizer.from_pretrained(self.tokenizer_name)
-            self.model = GPTNeoForCausalLM.from_pretrained(self.model_name)
-            device = self.device
-
+            self.model.resize_token_embeddings(len(self.tokenizer))
+            self.model.to(self.device)
+            
             print(f"Model name: {self.model_name}")
             print(f"Tokenizer name: {self.tokenizer_name}")
-            print(f"Device: {device}")
-
-            print("\nThe model has loaded successfully.")
+            print(f"Device: {self.device}")
+            print("The model has loaded successfully.")
 
         except Exception as e:
-            print(e)
-
+            print(f"Error: {e}")
 
     def data_processing(self) -> str:
-        corpus = None
-
         with open(self.data_file, "r", encoding="utf-8") as file:
             data = json.load(file)
             
@@ -89,11 +103,7 @@ class Train():
 
         return corpus
     
-
     def tokenize_corpus(self):
-        self.tokenizer.add_special_tokens({"pad_token": "[PAD]"})
-        self.model.resize_token_embeddings(len(self.tokenizer))
-
         with open(self.data_file, "r", encoding="utf-8") as file:
             data = json.load(file)
     
@@ -108,8 +118,6 @@ class Train():
 
         return tokens
 
-
-
     def prepare_dataset(self):
         tokens = self.tokenize_corpus()
         input_ids = tokens["input_ids"]
@@ -120,48 +128,53 @@ class Train():
             dataset.append({
                 "input_ids": input_ids[i],
                 "attention_mask": attention_mask[i],
-                "labels": input_ids[i]
+                "labels": input_ids[i]  
             })
 
         hf_dataset = Dataset.from_list(dataset)
         split = hf_dataset.train_test_split(test_size=0.1)
         return split["train"], split["test"]
 
-
     def train_model(self):
         train_dataset, eval_dataset = self.prepare_dataset()
-        training_config = TrainingConfig()
-        training_args = training_config.to_training_args()
+        training_args = self.training_config.to_training_args()
+
+        data_collator = DataCollatorForLanguageModeling(
+            tokenizer=self.tokenizer,
+            mlm=False, 
+        )
 
         trainer = Trainer(
             model=self.model,
             args=training_args,
             train_dataset=train_dataset,
             eval_dataset=eval_dataset,
-            tokenizer=self.tokenizer
+            tokenizer=self.tokenizer,
+            data_collator=data_collator
         )
 
         torch.cuda.empty_cache()
+        print("Training started...")
         trainer.train()
         self.save_model()
-
-
 
     def save_model(self):
         self.model.save_pretrained("./Model")
         self.tokenizer.save_pretrained("./Model")
-        print("Model was saved. (./Model)")
-
+        with open("./Model/training_config.json", "w") as f:
+            json.dump(self.training_config.__dict__, f, indent=4)
+            
+        print("Model and training_config saved to ./Model")
 
 if __name__ == "__main__":
-    ## Model settings ##
     model_name = "EleutherAI/gpt-neo-125M"
     tokenizer_name = "EleutherAI/gpt-neo-125M"
-    tokenizer = GPT2Tokenizer.from_pretrained(tokenizer_name)
-    model = GPTNeoForCausalLM.from_pretrained(model_name)
     data_file = "data.json"
 
+    if torch.cuda.is_available():
+        print(f"GPU: {torch.cuda.get_device_name(0)}")
+        print(f"GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
 
-    train = Train(model_name, tokenizer_name, tokenizer, model, data_file)
+    train = Train(model_name, tokenizer_name, data_file)
     train.train_model()
-        
+    
